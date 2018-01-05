@@ -1,6 +1,6 @@
 Gem::Specification.new do |s|
   s.name          = 'logstash-input-elasticache'
-  s.version       = '0.2.10'
+  s.version       = '0.3.1'
   s.summary       = 'Import events from ElastiCache to Logstash'
 
   s.authors       = ['Andrew Schleifer']
