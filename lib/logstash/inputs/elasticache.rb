@@ -18,12 +18,15 @@ class LogStash::Inputs::ElastiCache < LogStash::Inputs::Base
   config :source_type, :validate => :string, :required => true
   config :source_name, :validate => :string, :required => true
   config :polling_frequency, :validate => :number, :default => 600
+  config :sincedb_path, :validate => :string, :default => nil
 
   def register
     require "aws-sdk"
     @logger.info "Registering ElastiCache input", :region => @region, :source_type => @source_type, :source_name => @source_name
     @elasticache = Aws::ElastiCache::Client.new aws_options_hash
-    @since = DateTime.now - 13 # FIXME sincedb
+
+    path = @sincedb_path || File.join(ENV["HOME"], ".sincedb_" + Digest::MD5.hexdigest("#{@source_type}+#{@source_name}"))
+    @sincedb = SinceDB::File.new path
   end
 
   def run(queue)
@@ -38,7 +41,7 @@ class LogStash::Inputs::ElastiCache < LogStash::Inputs::Base
           response = @elasticache.describe_events({
             source_identifier: @source_name,
             source_type: @source_type,
-            start_time: @since,
+            start_time: @sincedb.read,
             end_time: checkpoint,
             marker: marker,
           })
@@ -47,7 +50,7 @@ class LogStash::Inputs::ElastiCache < LogStash::Inputs::Base
           more = response[:marker]
           marker = response[:marker]
         end
-        @since = checkpoint
+        @sincedb.write checkpoint
       end
     end
   end
@@ -81,5 +84,27 @@ class LogStash::Inputs::ElastiCache < LogStash::Inputs::Base
     event.set @source_type.gsub(/-/, "_"), @source_name
     @logger.debug "shipping #{event} to #{queue}"
     queue << event
+  end
+
+  private
+  module SinceDB
+    class File
+      def initialize(file)
+        @db = file
+      end
+
+      def read
+        if ::File.exists?(@db)
+          content = ::File.read(@db).chomp.strip
+          return content.empty? ? Time.new : Time.parse(content)
+        else
+          return DateTime.now - 13
+        end
+      end
+
+      def write(time)
+        ::File.open(@db, 'w') { |file| file.write time.to_s }
+      end
+    end
   end
 end
