@@ -15,8 +15,8 @@ class LogStash::Inputs::ElastiCache < LogStash::Inputs::Base
   milestone 1
   default :codec, "plain"
 
-  config :source_type, :validate => :string, :required => true
-  config :source_name, :validate => :string, :required => true
+  config :source_type, :validate => :string, :default => nil
+  config :source_name, :validate => :string, :default => nil
   config :polling_frequency, :validate => :number, :default => 600
   config :sincedb_path, :validate => :string, :default => nil
 
@@ -38,14 +38,14 @@ class LogStash::Inputs::ElastiCache < LogStash::Inputs::Base
         more = true
         marker = nil
         while more do
-          response = @elasticache.describe_events({
+          options = {
             source_identifier: @source_name,
             source_type: @source_type,
             start_time: @sincedb.read,
             end_time: checkpoint,
             marker: marker,
-          })
-
+          }.delete_if {|k,v| v.nil? }
+          response = @elasticache.describe_events(options)
           response[:events].each { |item| enqueue item, queue }
           more = response[:marker]
           marker = response[:marker]
@@ -81,7 +81,7 @@ class LogStash::Inputs::ElastiCache < LogStash::Inputs::Base
       "message" => item.message,
     })
     decorate event
-    event.set @source_type.gsub(/-/, "_"), @source_name
+    event.set @source_type.gsub(/-/, "_"), @source_name if @source_type
     @logger.debug "shipping #{event} to #{queue}"
     queue << event
   end
